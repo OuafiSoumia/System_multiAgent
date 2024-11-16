@@ -150,112 +150,90 @@ public class AutonomyTwo extends Robot {
 		return robots;		
 	}
 
-	
-            /**
-             * The main method of the robot behaviour
-             */ 
-            public void run() {    
-                while (step(timeStep) != -1) {    
-                    double[] psValues = readDistanceSensorValues();
-                    int randomOffset = random.nextInt(-20, 25);
-                    double threshold = 100.0;
-            
-                    List<CameraRecognitionObject> detectedObjects = cameraDetection();
-                    CameraRecognitionObject target = targetDetected(detectedObjects);
-            
-                    if (target != null && handleTargetDetection(target)) {
-                        break;
-                    }
-            
-                    if (shouldMoveForward(psValues, threshold)) {
-                        move(50 + randomOffset, 50 - randomOffset);
-                    } else if (shouldTurnLeft(psValues, threshold)) {
-                        move(-50.0, 50.0);
-                    } else if (shouldTurnRandom(psValues, threshold)) {
-                        moveRandomDirection();
-                    } else if (shouldTurnRight(psValues, threshold)) {
-                        move(50.0, -50.0);
-                    } else {
-                        move(-randomOffset, randomOffset);
-                    }
-                }
-            }
-            
-            /**
-             * Handles the logic when a target is detected.
-             * @param target The detected target object.
-             * @return True if the robot reached the target; false otherwise.
-             */
-            private boolean handleTargetDetection(CameraRecognitionObject target) {
-                double[] targetPosition = target.getPosition();
-                double yPosition = targetPosition[1];
-                double xPosition = targetPosition[0];
-            
-                if (yPosition < 0.1 && yPosition > 0) {
-                    System.out.println("x est -------------");
-                    move(-5.0, 25.0); // Turn left
-                } else if (yPosition > -0.1 && yPosition <= 0) {
-                    System.out.println("x est +++++++++");
-                    move(25.0, -5.0); // Turn right
-                } else if (xPosition < 0.1) {
-                    System.out.println("else **************************");
-                    move(0, 0);
-                    return true; // Target reached
-                }
-            
-                return false;
-            }
-            
-            /**
-             * Determines if the robot should move forward.
-             */
-            private boolean shouldMoveForward(double[] psValues, double threshold) {
-                return psValues[0] < threshold && psValues[7] < threshold;
-            }
-            
-            /**
-             * Determines if the robot should turn left.
-             */
-            private boolean shouldTurnLeft(double[] psValues, double threshold) {
-                return psValues[2] > threshold ||
-                       (psValues[0] > threshold && psValues[1] > threshold && psValues[2] > threshold) ||
-                       (psValues[0] > threshold && psValues[1] > threshold && psValues[7] > threshold) ||
-                       (psValues[0] > threshold && psValues[1] > threshold) ||
-                       (psValues[1] > threshold && psValues[2] > threshold);
-            }
-            
-            /**
-             * Determines if the robot should turn in a random direction.
-             */
-            private boolean shouldTurnRandom(double[] psValues, double threshold) {
-                return (psValues[0] > threshold && psValues[7] > threshold) || 
-                       (psValues[0] > threshold && psValues[7] > threshold && psValues[1] > threshold && psValues[6] > threshold) ||
-                       (psValues[1] > threshold && psValues[7] > threshold && psValues[6] > threshold);
-            }
-            
-            /**
-             * Moves the robot in a random direction.
-             */
-            private void moveRandomDirection() {
-                int direction = random.nextInt(2);
-                if (direction == 1) {
-                    move(-50.0, 50.0); // Turn left
-                } else {
-                    move(50.0, -50.0); // Turn right
-                }
-            }
-            
-            /**
-             * Determines if the robot should turn right.
-             */
-            private boolean shouldTurnRight(double[] psValues, double threshold) {
-                return psValues[5] > threshold ||
-                       (psValues[5] > threshold && psValues[6] > threshold) ||
-                       (psValues[6] > threshold && psValues[7] > threshold) ||
-                       (psValues[5] > threshold && psValues[6] > threshold && psValues[7] > threshold) ||
-                       (psValues[0] > threshold && psValues[6] > threshold && psValues[7] > threshold);
-            }
+	/**
+	 * The main method of the robot behaviour
+	 */	
+	public void run() {
+		while (step(timeStep) != -1) {
+			double[] psValues = readDistanceSensorValues();
+			List<CameraRecognitionObject> detectedObjects = cameraDetection();
 
+			if (handleTargetDetection(detectedObjects)) break;
+
+			if (handleObstacleAvoidance(psValues)) continue;
+
+			moveRandomly();
+		}
+	}
+
+	private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
+		CameraRecognitionObject target = targetDetected(detectedObjects);
+		if (target != null) {
+			double[] targetPosition = target.getPosition();
+			double yPosition = targetPosition[1];
+			double xPosition = targetPosition[0];
+
+			if (yPosition < 0.1 && yPosition > 0) {
+				System.out.println("x est -------------");
+				move(-5.0, 25.0); 
+				step(timeStep);
+			} else if (yPosition > -0.1 && yPosition <= 0) {
+				System.out.println("x est +++++++++");
+				move(25.0, -5.0); 
+				step(timeStep);
+			} if (xPosition < 0.1) {
+				System.out.println("else **************************");
+				move(0, 0);
+				step(timeStep);
+				return true; 
+			}
+		}
+		return false;
+	}
+
+	private boolean handleObstacleAvoidance(double[] psValues) {
+		double threshold = 100.0;
+		int aleatoire = random.nextInt(-20, 25);
+
+		if ((psValues[0] < threshold && psValues[7] < threshold)) {
+			move(50 + aleatoire, 50 - aleatoire);
+			return true;
+		}
+
+		if ((psValues[2] > threshold) ||
+			(psValues[0] > threshold && psValues[1] > threshold && psValues[2] > threshold) ||
+			(psValues[0] > threshold && psValues[1] > threshold && psValues[7] > threshold) ||
+			(psValues[0] > threshold && psValues[1] > threshold) ||
+			(psValues[1] > threshold && psValues[2] > threshold)) {
+			move(-50.0, 50.0);
+			return true;
+		}
+
+		if ((psValues[0] > threshold && psValues[7] > threshold) ||
+			(psValues[0] > threshold && psValues[7] > threshold && psValues[1] > threshold && psValues[6] > threshold) ||
+			(psValues[1] > threshold && psValues[7] > threshold && psValues[6] > threshold)) {
+			int direction = random.nextInt(2);
+			if (direction == 1) move(-50.0, 50.0);
+			else move(50.0, -50.0);
+			return true;
+		}
+
+		if ((psValues[5] > threshold) ||
+			(psValues[5] > threshold && psValues[6] > threshold) ||
+			(psValues[6] > threshold && psValues[7] > threshold) ||
+			(psValues[5] > threshold && psValues[6] > threshold && psValues[7] > threshold) ||
+			(psValues[0] > threshold && psValues[6] > threshold && psValues[7] > threshold)) {
+			move(50.0, -50.0);
+			return true;
+		}
+
+		return false; // Aucun obstacle à éviter
+	}
+
+	private void moveRandomly() {
+		int aleatoire = random.nextInt(-20, 25);
+		move(-aleatoire, aleatoire);
+	}
 
 	public static void main(String[] args) {
 		AutonomyTwo controller = new AutonomyTwo();
