@@ -205,6 +205,7 @@ public class AutonomyTwo extends Robot {
 			(psValues[0] > threshold && psValues[1] > threshold && psValues[7] > threshold) ||
 			(psValues[0] > threshold && psValues[1] > threshold) ||
 			(psValues[0] > threshold) ||
+			(psValues[1] > threshold) ||
 			(psValues[1] > threshold && psValues[2] > threshold)) {
 			move(-50.0, 50.0);
 			return true;
