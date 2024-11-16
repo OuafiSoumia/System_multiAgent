@@ -204,6 +204,7 @@ public class AutonomyTwo extends Robot {
 			(psValues[0] > threshold && psValues[1] > threshold && psValues[2] > threshold) ||
 			(psValues[0] > threshold && psValues[1] > threshold && psValues[7] > threshold) ||
 			(psValues[0] > threshold && psValues[1] > threshold) ||
+			(psValues[0] > threshold) ||
 			(psValues[1] > threshold && psValues[2] > threshold)) {
 			move(-50.0, 50.0);
 			return true;
@@ -211,7 +212,8 @@ public class AutonomyTwo extends Robot {
 
 		if ((psValues[0] > threshold && psValues[7] > threshold) ||
 			(psValues[0] > threshold && psValues[7] > threshold && psValues[1] > threshold && psValues[6] > threshold) ||
-			(psValues[1] > threshold && psValues[7] > threshold && psValues[6] > threshold)) {
+			(psValues[1] > threshold && psValues[7] > threshold && psValues[6] > threshold)||
+			(psValues[0] > threshold && psValues[1] > threshold && psValues[6] > threshold)) {
 			int direction = random.nextInt(2);
 			if (direction == 1) move(-50.0, 50.0);
 			else move(50.0, -50.0);
@@ -219,6 +221,7 @@ public class AutonomyTwo extends Robot {
 		}
 
 		if ((psValues[5] > threshold) ||
+			(psValues[7] > threshold) ||
 			(psValues[5] > threshold && psValues[6] > threshold) ||
 			(psValues[6] > threshold && psValues[7] > threshold) ||
 			(psValues[5] > threshold && psValues[6] > threshold && psValues[7] > threshold) ||
