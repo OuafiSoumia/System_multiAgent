@@ -11,7 +11,7 @@ import com.cyberbotics.webots.controller.Motor;
 import com.cyberbotics.webots.controller.PositionSensor;
 import com.cyberbotics.webots.controller.Receiver;
 import com.cyberbotics.webots.controller.Robot;
-import java.util.Locale;  // Ajouter cet import en haut du fichier
+import java.util.Locale;  
 
 
 public class AutonomyThree extends Robot {
@@ -27,19 +27,19 @@ public class AutonomyThree extends Robot {
 	private Emitter emitter;
 	private Receiver receiver;
 	private LED[] leds;
-	    private Random random;
-	    // Nouveaux attributs pour la coordination
+	private Random random;
+	// Nouveaux attributs pour la coordination
     private boolean targetReached = false;
     private double targetGlobalX = 0;
     private double targetGlobalY = 0;
     private boolean movingToSharedTarget = false;
-        // Ajuster le seuil de la cible atteinte
+    // Ajuster le seuil de la cible atteinte
     private static final double TARGET_REACHED_THRESHOLD = 0.15; // Augmenté pour plus de tolérance
     private static final double MOVEMENT_SPEED_FACTOR = 1.5;    // Facteur pour ajuster la vitesse générale
 	
 	public AutonomyThree() {
 		timeStep = 128;  // set the control time step
-			        random = new Random();
+		random = new Random();
 	
 		// Sensors initialization 
 		// IR distance sensors
@@ -135,9 +135,132 @@ public class AutonomyThree extends Robot {
 
         return false;
     }
+	/**
+	 * 
+	 * @param left : a value between [-100;100]%
+	 * @param right : a value between [-100;100]%
+	 */
+	protected void move(double left, double right) {
+		double max=6.2;
+		getMotor("left wheel motor").setVelocity(left * max / 100);
+		getMotor("right wheel motor").setVelocity(right * max / 100);
+	}
+	/**
+	 * Switch on / off a LED according to its num ([0;9])
+	 * @param num
+	 * @param on : true if the LED is to be switched on, 
+	 * or false if the LED is to be switched off
+	 */
+	protected void setLED(int num, boolean on) {
+		if(num < 10) {
+			leds[num].set(on ? 1 : 0);
+		}
+	}
+	/**
+	 * 
+	 * @return an empty list if nothing is detected by the camera, 
+	 * a list of CameraRecognitionObject otherwise (see https://cyberbotics.com/doc/reference/camera#camera-recognition-object)
+	 */
+	protected List<CameraRecognitionObject> cameraDetection() {
+		ArrayList<CameraRecognitionObject> detected=new ArrayList<>();
+		int nb=camera.getRecognitionNumberOfObjects();
+		if(nb >0) {
+			CameraRecognitionObject[] objects=camera.getRecognitionObjects();
+			for(int i=0;i<objects.length;i++) {
+				detected.add(objects[i]);
+			}
+		}
+		return detected;
+	}
+	/**
+	 * Look in a List of camera detected objects if the target is one of them 
+	 * @param detected: a List of camera detected objects
+	 * @return the target (a specific CameraRecognitionObject) or null
+	 */
+	protected CameraRecognitionObject targetDetected(List<CameraRecognitionObject> detected) {
+		for(CameraRecognitionObject ob:detected) {
+			if(ob.getModel().compareTo("cible") == 0)
+				return ob;
+		}
+		return null;		
+	}
+	/**
+	 * 
+	 * @param robot another robot detected by the Camera
+	 * @return true if this robot has his LED "led8" on, false otherwise
+	 */
+	private boolean isLightON(CameraRecognitionObject robot) {
+		int[] image=camera.getImage();
+		boolean detected=false;
 
-private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
+		int[] position=robot.getPositionOnImage();
+		int width=robot.getSizeOnImage()[0];
+		int height=robot.getSizeOnImage()[1];
+
+		int startx=position[0] - (width + 1)/2;
+		int starty=position[1] - (height + 1)/2;
+
+		for (int i = 0; i < width; i++) {
+			for(int j=0;j< height;j++) {
+				int pixel=image[(startx+i)+(camera.getWidth() * (starty+j))];
+				if(Camera.pixelGetRed(pixel) >= 254 && 	Camera.pixelGetGreen(pixel) >= 254 && Camera.pixelGetBlue(pixel) < 200) {
+					if (detected) return true;
+					else detected=true;					
+				}
+			}
+		}
+		return false;
+
+	}
+	
+	/**
+	 * 
+	 * @return a double array with values for each IR sensor 
+	 * Each value is between approx. [67 ; 750 (very close - contact)]
+	 * (see https://cyberbotics.com/doc/guide/epuck)
+	 */
+	protected double[] readDistanceSensorValues() {
+		// read sensors outputs
+		double[] psValues = {0, 0, 0, 0, 0, 0, 0, 0};
+		for (int i = 0; i < 8 ; i++)
+			psValues[i] = distanceSensor[i].getValue();
+
+		return psValues;
+	}
+	/**
+	 * Initialisation of the computation of the relative position of the robot
+	*/
+	private void initLocalisation() {		
+		step(timeStep);
+		odometry.track_start_pos(encoder_unit * leftMotorSensor.getValue(), encoder_unit * rightMotorSensor.getValue());
+		odometry.setX(0);
+		odometry.setY(0);
+		odometry.setTheta(Math.PI/2);		
+	}
+	
+	/**
+	 * To call to compute in real time its own relative position 
+	 * @param print : true if the relative position must be printed in the console 
+	 */
+	protected void localise(boolean print) {
+		odometry.track_step_pos(encoder_unit * leftMotorSensor.getValue(), encoder_unit * rightMotorSensor.getValue());
+		if(print) {
+			Double[] pos=getPosition();
+			System.out.println("Position : "+pos[0]+","+pos[1]);
+		}
+	}
+	/**
+	 * Get the computed relative position of the robot (x;y)
+	 * The starting point is always (0;0)
+	 * @return
+	 */
+	protected Double[] getPosition() {
+		return new Double[] {odometry.getX(),odometry.getY()};
+	}
+//added code ********************
+	private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
         if (movingToSharedTarget) {
+			navigateToSharedTarget();
             return moveToSharedTarget();
         }
 
@@ -148,11 +271,6 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
             double localX = localPosition[0]; // avant/arrière
             double localY = localPosition[1]; // gauche/droite
 
-            if (Double.isNaN(localX) || Double.isNaN(localY)) {
-                System.out.println("Invalid target coordinates detected");
-                return false;
-            }
-
             // Position et orientation actuelles du robot
             double robotX = odometry.getX();
             double robotY = odometry.getY();
@@ -161,11 +279,6 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
             // Conversion en coordonnées globales
             double targetX_global = robotX + (localX * Math.cos(robotTheta) - localY * Math.sin(robotTheta));
             double targetY_global = robotY + (localX * Math.sin(robotTheta) + localY * Math.cos(robotTheta));
-
-            // Log détaillé
-            //System.out.println("Robot at: X=" + robotX + ", Y=" + robotY + ", Theta=" + Math.toDegrees(robotTheta));
-            //System.out.println("Target local: X=" + localX + ", Y=" + localY);
-            //System.out.println("Target global: X=" + targetX_global + ", Y=" + targetY_global);
 
             // Distance locale pour la détection
             double distanceToTarget = Math.sqrt(localX * localX + localY * localY);
@@ -197,41 +310,44 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
         return false;
     }
 
+ 	private void navigateToSharedTarget() {
+        // On utilise les coordonnées reçues (targetGlobalX, targetGlobalY)
+        double distance = Math.sqrt(targetGlobalX * targetGlobalX + targetGlobalY * targetGlobalY);
+        double angle = Math.atan2(targetGlobalY, targetGlobalX);
 
-	/**
-	 * The main method of the robot behaviour
-	 */	
+        System.out.println("Navigating to shared target:");
+        System.out.println("Distance: " + distance);
+        System.out.println("Angle: " + Math.toDegrees(angle));
 
-        public void run() {
+        // Si on est arrivé à la cible
+        if (distance < TARGET_REACHED_THRESHOLD) {
+            targetReached = true;
+            movingToSharedTarget = false;
+            move(0.0, 0.0);
+            return;
+        }
+
+        // Navigation
+        if (Math.abs(angle) > 0.1) {
+            move(-5.0, 25.0);  // Tourner
+        } else {
+            move(25.0, 25.0);  // Avancer
+        }
+	}
+    public void run() {
         initLocalisation(); 
         // Initialiser l'odométrie et vérifier l'initialisation
         double leftInitial = leftMotorSensor.getValue();
         double rightInitial = rightMotorSensor.getValue();
         
         odometry.track_start_pos(leftInitial, rightInitial);
-       // System.out.println("Odometry initialized");
 
         while (step(timeStep) != -1) {
             // Mettre à jour et vérifier l'odométrie
             double leftCurrent = leftMotorSensor.getValue();
             double rightCurrent = rightMotorSensor.getValue();
-            //System.out.println("******odométrie left " + leftCurrent + ", Right: " + rightCurrent);
-
-            // Debug odométrie
-            if (leftCurrent != 0 || rightCurrent != 0) {
-              //  System.out.println("Current sensor values - Left: " + leftCurrent + ", Right: " + rightCurrent);
-            }
             
             odometry.track_step_pos(leftCurrent, rightCurrent);
-            
-            // Vérifier l'état de l'odométrie
-            double robotX = odometry.getX();
-            double robotY = odometry.getY();
-            double robotTheta = odometry.getTheta();
-            
-            if (!Double.isNaN(robotX) && !Double.isNaN(robotY) && !Double.isNaN(robotTheta)) {
-                //System.out.println("Robot position - X: " + robotX + ", Y: " + robotY + ", Theta: " + robotTheta);
-            }
             
             double[] psValues = readDistanceSensorValues();
             List<CameraRecognitionObject> detectedObjects = cameraDetection();
@@ -239,6 +355,7 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
             String receivedMessage = checkMailBox();
             if (receivedMessage != null) {
                 System.out.println("Received message: " + receivedMessage);
+				movingToSharedTarget = true;  
             }
 
             if (handleTargetDetection(detectedObjects)) continue;
@@ -250,223 +367,6 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
             }
         }
     }
-	
-
-
-	/**
-	 * Initialisation of the computation of the relative position of the robot
-	 */
-	private void initLocalisation() {		
-		step(timeStep);
-		odometry.track_start_pos(encoder_unit * leftMotorSensor.getValue(), encoder_unit * rightMotorSensor.getValue());
-		odometry.setX(0);
-		odometry.setY(0);
-		odometry.setTheta(Math.PI/2);		
-	}
-	
-	
-	/**
-	 * To call to compute in real time its own relative position 
-	 * @param print : true if the relative position must be printed in the console 
-	 */
-	protected void localise(boolean print) {
-		odometry.track_step_pos(encoder_unit * leftMotorSensor.getValue(), encoder_unit * rightMotorSensor.getValue());
-		if(print) {
-			Double[] pos=getPosition();
-			System.out.println("Position : "+pos[0]+","+pos[1]);
-		}
-	}
-
-	
-	/**
-	 * Get the computed relative position of the robot (x;y)
-	 * The starting point is always (0;0)
-	 * @return
-	 */
-	protected Double[] getPosition() {
-		return new Double[] {odometry.getX(),odometry.getY()};
-	}
-	
-	/**
-	 * Move towards a position (xObj;yObj) within the relative coordinate system of the robot
-	 * @param xObj
-	 * @param yObj
-	 * @param left power of the left motor
-	 * @param right power of the right motor
-	 */
-	private void moveTowards(Double xObj, Double yObj, double left, double right) {
-		double theta_goal=0;
-		double eps=0.05;
-		boolean error=false;
-		if(Math.abs(odometry.getX() - xObj) < eps) {
-			if(Math.abs(odometry.getY() - yObj) < eps) {
-				error=true;
-				System.err.println("Erreur de localisation : ("+odometry.getX()+","+odometry.getY()+") --> ("+xObj+","+yObj+")");
-			}
-			else if(odometry.getY()>yObj) {
-				theta_goal=3*Math.PI/2;
-			}
-			else {
-				theta_goal=Math.PI/2;
-			}
-
-		}
-		else if(odometry.getX() > xObj) {
-			if(Math.abs(odometry.getY() - yObj) < eps) {
-				theta_goal=Math.PI;
-			}
-			else if(odometry.getY()>yObj) {
-				theta_goal=(5*Math.PI/4);
-			}
-			else {
-				theta_goal=3*Math.PI/4;
-			}
-		}
-		else {
-			if(Math.abs(odometry.getY() - yObj) < eps) {
-				theta_goal=0;
-			}
-			else if(odometry.getY()>yObj) {
-				theta_goal=(7*Math.PI/4);
-			}
-			else {
-				theta_goal=Math.PI/4;
-			}
-		}
-
-		if(!error) {
-			double mon_theta=odometry.getTheta();
-
-			if(mon_theta > 3 * Math.PI / 2 && theta_goal < Math.PI / 2)
-				theta_goal += 2 * Math.PI;
-			else if(mon_theta < Math.PI / 2 && theta_goal > 3 * Math.PI / 2)
-				mon_theta += 2 * Math.PI;
-
-			if(Math.abs(mon_theta - theta_goal) > eps) {
-				if(mon_theta - theta_goal > theta_goal - mon_theta) {				
-					move(left,right/2);
-				}
-				else {								
-					move(left/2,right);
-				}
-			}
-			else {
-				move(left,right);
-			}
-		}
-	}
-
-	/**
-	 * 
-	 * @return a double array with values for each IR sensor 
-	 * Each value is between approx. [67 ; 750 (very close - contact)]
-	 * (see https://cyberbotics.com/doc/guide/epuck)
-	 */
-	protected double[] readDistanceSensorValues() {
-		// read sensors outputs
-		double[] psValues = {0, 0, 0, 0, 0, 0, 0, 0};
-		for (int i = 0; i < 8 ; i++)
-			psValues[i] = distanceSensor[i].getValue();
-
-		return psValues;
-	}
-
-	/**
-	 * 
-	 * @param left : a value between [-100;100]%
-	 * @param right : a value between [-100;100]%
-	 */
-	protected void move(double left, double right) {
-		double max=6.2;
-		getMotor("left wheel motor").setVelocity(left * max / 100);
-		getMotor("right wheel motor").setVelocity(right * max / 100);
-	}
-	
-	/**
-	 * Switch on / off a LED according to its num ([0;9])
-	 * @param num
-	 * @param on : true if the LED is to be switched on, 
-	 * or false if the LED is to be switched off
-	 */
-	protected void setLED(int num, boolean on) {
-		if(num < 10) {
-			leds[num].set(on ? 1 : 0);
-		}
-	}
-
-	/**
-	 * 
-	 * @return an empty list if nothing is detected by the camera, 
-	 * a list of CameraRecognitionObject otherwise (see https://cyberbotics.com/doc/reference/camera#camera-recognition-object)
-	 */
-	protected List<CameraRecognitionObject> cameraDetection() {
-		ArrayList<CameraRecognitionObject> detected=new ArrayList<>();
-		int nb=camera.getRecognitionNumberOfObjects();
-		if(nb >0) {
-			CameraRecognitionObject[] objects=camera.getRecognitionObjects();
-			for(int i=0;i<objects.length;i++) {
-				detected.add(objects[i]);
-			}
-		}
-		return detected;
-	}
-
-	/**
-	 * Look in a List of camera detected objects if the target is one of them 
-	 * @param detected: a List of camera detected objects
-	 * @return the target (a specific CameraRecognitionObject) or null
-	 */
-	protected CameraRecognitionObject targetDetected(List<CameraRecognitionObject> detected) {
-		for(CameraRecognitionObject ob:detected) {
-			if(ob.getModel().compareTo("cible") == 0)
-				return ob;
-		}
-		return null;		
-	}
-
-	/**
-	 * Look in a List of camera detected objects if other robots are recognized 
-	 * @param detected: a List of camera detected objects
-	 * @return a List of CameraRecognitionObject representing the other robots
-	 */
-	protected List<CameraRecognitionObject> otherRobotsDetected(List<CameraRecognitionObject> detected) {
-		ArrayList<CameraRecognitionObject> robots=new ArrayList<>();
-		for(CameraRecognitionObject ob:detected) {
-          
-			if(ob.getModel().compareTo("e-puck") == 0)
-				robots.add(ob);
-		}
-		return robots;		
-	}
-	
-	/**
-	 * 
-	 * @param robot another robot detected by the Camera
-	 * @return true if this robot has his LED "led8" on, false otherwise
-	 */
-	private boolean isLightON(CameraRecognitionObject robot) {
-		int[] image=camera.getImage();
-		boolean detected=false;
-
-		int[] position=robot.getPositionOnImage();
-		int width=robot.getSizeOnImage()[0];
-		int height=robot.getSizeOnImage()[1];
-
-		int startx=position[0] - (width + 1)/2;
-		int starty=position[1] - (height + 1)/2;
-
-		for (int i = 0; i < width; i++) {
-			for(int j=0;j< height;j++) {
-				int pixel=image[(startx+i)+(camera.getWidth() * (starty+j))];
-				if(Camera.pixelGetRed(pixel) >= 254 && 	Camera.pixelGetGreen(pixel) >= 254 && Camera.pixelGetBlue(pixel) < 200) {
-					if (detected) return true;
-					else detected=true;					
-				}
-			}
-		}
-		return false;
-
-	}
 
 	/**
 	 * Allows to send a message at all the other robots
@@ -475,11 +375,53 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
 	protected void broadcastMessage(String message) {
 		emitter.send(message.getBytes());
 	}
+		/**
+	 * Check if a message has been received, and flush the pile
+	 * @return null if there is no message, a String otherwise
+	 */
+	protected String checkMailBox() {
+        String message = null;
+        while (receiver.getQueueLength() > 0) {
+            byte[] data = receiver.getData();
+            receiver.nextPacket();
+            
+            if (data != null) {
+                message = new String(data);
+                System.out.println("Received raw message: " + message);
+                
+                if (message.startsWith("TARGET_REACHED:")) {
+                    String[] parts = message.split(":");
+                    if (parts.length == 3) {
+                        try {
+                            double x = Double.parseDouble(parts[1].replace(',', '.'));
+                            double y = Double.parseDouble(parts[2].replace(',', '.'));
+                            
+                            // Debug values before assignment
+                            System.out.println("Parsed coordinates - X: " + x + ", Y: " + y);
+                            
+                            // Assigner les valeurs
+                            targetGlobalX = x;
+                            targetGlobalY = y;
+                            movingToSharedTarget = true;
+                            
+                            System.out.println("Successfully set target position to: (" + targetGlobalX + ", " + targetGlobalY + ")");
+                        } catch (Exception e) {
+                            System.out.println("Failed to parse coordinates from: " + message);
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        }
+        return message;
+    }
+
     private void moveRandomly() {
         double leftSpeed = random.nextDouble() * 100 - 50;
         double rightSpeed = random.nextDouble() * 100 - 50;
         move(leftSpeed, rightSpeed);
     }
+
 
     private boolean moveToSharedTarget() {
         // Position actuelle du robot
@@ -496,7 +438,7 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
         double localY = deltaX * Math.sin(-robotTheta) + deltaY * Math.cos(-robotTheta);
 
         // Distance à la cible
-        double distanceToTarget = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        double distanceToTarget = Math.sqrt(deltaX * localX + deltaY * localY);
         
         System.out.println("Moving to target - Distance: " + distanceToTarget);
         System.out.println("Robot at: X=" + robotX + ", Y=" + robotY);
@@ -530,21 +472,7 @@ private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObje
 
         return true;
     }
-	/**
-	 * Check if a message has been received, and flush the pile
-	 * @return null if there is no message, a String otherwise
-	 */
-	protected String checkMailBox() {
-		while(receiver.getQueueLength() > 0) {
-			byte[] message=receiver.getData();
-			receiver.nextPacket();
-			if(message != null) {
-				return new String(message);	
-			}
-			else return null;
-		}
-		return null;
-	}
+
 
 	public static void main(String[] args) {
 		AutonomyThree controller = new AutonomyThree();
