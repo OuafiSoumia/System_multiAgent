@@ -34,7 +34,7 @@ public class AutonomyThree extends Robot {
     private double targetGlobalY = 0;
     private boolean movingToSharedTarget = false;
     // Ajuster le seuil de la cible atteinte
-    private static final double TARGET_REACHED_THRESHOLD = 0.15; // Augmenté pour plus de tolérance
+    private static final double TARGET_REACHED_THRESHOLD = 0.16; // Augmenté pour plus de tolérance
     private static final double MOVEMENT_SPEED_FACTOR = 1.5;    // Facteur pour ajuster la vitesse générale
 	
 	public AutonomyThree() {
@@ -259,11 +259,7 @@ public class AutonomyThree extends Robot {
 	}
 //added code ********************
 	private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
-        if (movingToSharedTarget) {
-			navigateToSharedTarget();
-            return moveToSharedTarget();
-        }
-
+		System.out.println("saliiiiina");
         CameraRecognitionObject target = targetDetected(detectedObjects);
         if (target != null) {
             // Positions locales par rapport au robot
@@ -312,21 +308,21 @@ public class AutonomyThree extends Robot {
 
  	private void navigateToSharedTarget() {
         // On utilise les coordonnées reçues (targetGlobalX, targetGlobalY)
+
         double distance = Math.sqrt(targetGlobalX * targetGlobalX + targetGlobalY * targetGlobalY);
         double angle = Math.atan2(targetGlobalY, targetGlobalX);
 
         System.out.println("Navigating to shared target:");
         System.out.println("Distance: " + distance);
-        System.out.println("Angle: " + Math.toDegrees(angle));
+        System.out.println("X: " + targetGlobalX + "Y : "+targetGlobalY);
 
         // Si on est arrivé à la cible
         if (distance < TARGET_REACHED_THRESHOLD) {
             targetReached = true;
-            movingToSharedTarget = false;
+            //movingToSharedTarget = false;
             move(0.0, 0.0);
             return;
         }
-
         // Navigation
         if (Math.abs(angle) > 0.1) {
             move(-5.0, 25.0);  // Tourner
@@ -353,18 +349,16 @@ public class AutonomyThree extends Robot {
             List<CameraRecognitionObject> detectedObjects = cameraDetection();
 
             String receivedMessage = checkMailBox();
-            if (receivedMessage != null) {
-                System.out.println("Received message: " + receivedMessage);
-				movingToSharedTarget = true;  
+            if (movingToSharedTarget) {
+				System.out.println("Déplacement en cours vers la cible partagée.");
+				navigateToSharedTarget();
             }
 
-            if (handleTargetDetection(detectedObjects)) continue;
+            else if (handleTargetDetection(detectedObjects)) {
+			continue;}
 
             if (handleObstacleAvoidance(psValues)) continue;
 
-            if (!movingToSharedTarget) {
-                moveRandomly();
-            }
         }
     }
 
@@ -446,7 +440,7 @@ public class AutonomyThree extends Robot {
         System.out.println("Local vector to target: X=" + localX + ", Y=" + localY);
 
         if (distanceToTarget < TARGET_REACHED_THRESHOLD) {
-            movingToSharedTarget = false;
+            //movingToSharedTarget = false;
             targetReached = true;
             System.out.println("Reached shared target!");
             move(0.0, 0.0);
