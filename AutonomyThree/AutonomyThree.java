@@ -36,11 +36,14 @@ public class AutonomyThree extends Robot {
     // Ajuster le seuil de la cible atteinte
     private static final double TARGET_REACHED_THRESHOLD = 0.16; // Augmenté pour plus de tolérance
     private static final double MOVEMENT_SPEED_FACTOR = 1.5;    // Facteur pour ajuster la vitesse générale
-	
+	private boolean inAssignedZone = false;
+private int zoneNumber;  // numéro de la zone (0-5)
+
 	public AutonomyThree() {
 		timeStep = 128;  // set the control time step
 		random = new Random();
-	
+	    zoneNumber = random.nextInt(6);
+        assignZone();
 		// Sensors initialization 
 		// IR distance sensors
 		distanceSensor = new DistanceSensor[8];
@@ -145,17 +148,7 @@ public class AutonomyThree extends Robot {
 		getMotor("left wheel motor").setVelocity(left * max / 100);
 		getMotor("right wheel motor").setVelocity(right * max / 100);
 	}
-	/**
-	 * Switch on / off a LED according to its num ([0;9])
-	 * @param num
-	 * @param on : true if the LED is to be switched on, 
-	 * or false if the LED is to be switched off
-	 */
-	protected void setLED(int num, boolean on) {
-		if(num < 10) {
-			leds[num].set(on ? 1 : 0);
-		}
-	}
+
 	/**
 	 * 
 	 * @return an empty list if nothing is detected by the camera, 
@@ -184,35 +177,7 @@ public class AutonomyThree extends Robot {
 		}
 		return null;		
 	}
-	/**
-	 * 
-	 * @param robot another robot detected by the Camera
-	 * @return true if this robot has his LED "led8" on, false otherwise
-	 */
-	private boolean isLightON(CameraRecognitionObject robot) {
-		int[] image=camera.getImage();
-		boolean detected=false;
 
-		int[] position=robot.getPositionOnImage();
-		int width=robot.getSizeOnImage()[0];
-		int height=robot.getSizeOnImage()[1];
-
-		int startx=position[0] - (width + 1)/2;
-		int starty=position[1] - (height + 1)/2;
-
-		for (int i = 0; i < width; i++) {
-			for(int j=0;j< height;j++) {
-				int pixel=image[(startx+i)+(camera.getWidth() * (starty+j))];
-				if(Camera.pixelGetRed(pixel) >= 254 && 	Camera.pixelGetGreen(pixel) >= 254 && Camera.pixelGetBlue(pixel) < 200) {
-					if (detected) return true;
-					else detected=true;					
-				}
-			}
-		}
-		return false;
-
-	}
-	
 	/**
 	 * 
 	 * @return a double array with values for each IR sensor 
@@ -259,7 +224,6 @@ public class AutonomyThree extends Robot {
 	}
 //added code ********************
 	private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
-		System.out.println("saliiiiina");
         CameraRecognitionObject target = targetDetected(detectedObjects);
         if (target != null) {
             // Positions locales par rapport au robot
@@ -306,62 +270,146 @@ public class AutonomyThree extends Robot {
         return false;
     }
 
- 	private void navigateToSharedTarget() {
-        // On utilise les coordonnées reçues (targetGlobalX, targetGlobalY)
 
-        double distance = Math.sqrt(targetGlobalX * targetGlobalX + targetGlobalY * targetGlobalY);
-        double angle = Math.atan2(targetGlobalY, targetGlobalX);
+private static final int TOTAL_ROBOTS = 6;
+private int robotId; // Identifiant unique du robot (0-5)
+private double zoneMinX, zoneMaxX, zoneMinY, zoneMaxY; // Limites de la zone assignée
+private static final double ARENA_SIZE_X = 2.0; // Taille totale de l'arène en X
+private static final double ARENA_SIZE_Y = 3.0; // Taille totale de l'arène en Y
 
-        System.out.println("Navigating to shared target:");
-        System.out.println("Distance: " + distance);
-        System.out.println("X: " + targetGlobalX + "Y : "+targetGlobalY);
 
-        // Si on est arrivé à la cible
-        if (distance < TARGET_REACHED_THRESHOLD) {
-            targetReached = true;
-            //movingToSharedTarget = false;
-            move(0.0, 0.0);
-            return;
-        }
-        // Navigation
-        if (Math.abs(angle) > 0.1) {
-            move(-5.0, 25.0);  // Tourner
-        } else {
-            move(25.0, 25.0);  // Avancer
-        }
-	}
-    public void run() {
-        initLocalisation(); 
-        // Initialiser l'odométrie et vérifier l'initialisation
-        double leftInitial = leftMotorSensor.getValue();
-        double rightInitial = rightMotorSensor.getValue();
+
+
+
+
+// Modifier la méthode run()
+public void run() {
+
+    initLocalisation();
+
+    while (step(timeStep) != -1) {
+        localise(false);
+        Double[] currentPos = getPosition();
+        double[] psValues = readDistanceSensorValues();
+        List<CameraRecognitionObject> detectedObjects = cameraDetection();
+
+        String receivedMessage = checkMailBox();
         
-        odometry.track_start_pos(leftInitial, rightInitial);
-
-        while (step(timeStep) != -1) {
-            // Mettre à jour et vérifier l'odométrie
-            double leftCurrent = leftMotorSensor.getValue();
-            double rightCurrent = rightMotorSensor.getValue();
-            
-            odometry.track_step_pos(leftCurrent, rightCurrent);
-            
-            double[] psValues = readDistanceSensorValues();
-            List<CameraRecognitionObject> detectedObjects = cameraDetection();
-
-            String receivedMessage = checkMailBox();
-            if (movingToSharedTarget) {
-				System.out.println("Déplacement en cours vers la cible partagée.");
-				navigateToSharedTarget();
+        if (movingToSharedTarget) {
+            System.out.println("Déplacement vers la cible partagée");
+            if (!handleObstacleAvoidance(psValues)) {
+                navigateToSharedTarget();
             }
-
-            else if (handleTargetDetection(detectedObjects)) {
-			continue;}
-
-            if (handleObstacleAvoidance(psValues)) continue;
-
+        } else if (handleTargetDetection(detectedObjects)) {
+            continue;
+        } else if (handleObstacleAvoidance(psValues)) {
+            continue;
+        } else if (!inAssignedZone) {
+            // Se diriger vers la zone assignée
+            moveToAssignedZone();
+        } else {
+            // Explorer la zone assignée
+            exploreZone(psValues);
         }
     }
+}
 
+private void assignZone() {
+    // Calculer la position de la zone basée sur zoneNumber
+    int row = zoneNumber / 3;    // 0 pour zones 0,1,2 et 1 pour zones 3,4,5
+    int col = zoneNumber % 3;    // 0,1,2 pour chaque rangée
+    
+    double zoneWidth = ARENA_SIZE_X / 3;
+    double zoneHeight = ARENA_SIZE_Y / 2;
+    //pour encadrer chaque zone entre (zoneMinX,zoneMinY),(zoneMaxX,zoneMaxXy)
+    zoneMinX = col * zoneWidth - ARENA_SIZE_X/2;
+    zoneMaxX = (col + 1) * zoneWidth - ARENA_SIZE_X/2;
+    zoneMinY = row * zoneHeight - ARENA_SIZE_Y/2;
+    zoneMaxY = (row + 1) * zoneHeight - ARENA_SIZE_Y/2;
+    
+    System.out.println("Robot assigned to zone " + zoneNumber + ": (" + 
+        zoneMinX + "," + zoneMinY + ") to (" + zoneMaxX + "," + zoneMaxY + ")");
+}
+
+private void moveToAssignedZone() {
+    Double[] currentPos = getPosition();
+    double targetX = (zoneMinX + zoneMaxX) / 2;
+    double targetY = (zoneMinY + zoneMaxY) / 2;
+    
+    if (currentPos[0] >= zoneMinX && currentPos[0] <= zoneMaxX &&
+        currentPos[1] >= zoneMinY && currentPos[1] <= zoneMaxY) {
+        inAssignedZone = true;
+        return;
+    }
+    
+    double deltaX = targetX - currentPos[0];
+    double deltaY = targetY - currentPos[1];
+    double angle = Math.atan2(deltaY, deltaX);
+    double robotTheta = odometry.getTheta();
+    double angleDiff = angle - robotTheta;
+    
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    
+    if (Math.abs(angleDiff) > 0.1) {
+        move(angleDiff > 0 ? -15.0 : 15.0, angleDiff > 0 ? 15.0 : -15.0);
+    } else {
+        move(30.0, 30.0);
+    }
+}
+
+private void exploreZone(double[] psValues) {
+    Double[] currentPos = getPosition();
+    
+    if (currentPos[0] < zoneMinX || currentPos[0] > zoneMaxX ||
+        currentPos[1] < zoneMinY || currentPos[1] > zoneMaxY) {
+        inAssignedZone = false;
+        return;
+    }
+    
+    double distanceFromMinX = currentPos[0] - zoneMinX;
+    double distanceFromMaxX = zoneMaxX - currentPos[0];
+    
+    if (distanceFromMinX < 0.1 || distanceFromMaxX < 0.1) {
+        // Près des bords, changer de direction
+        if (distanceFromMinX < 0.1) {
+            move(20.0, -20.0);  // tourner droite
+        } else {
+            move(-20.0, 20.0);  // tourner gauche
+        }
+    } else {
+        // Exploration avec légère oscillation
+        double oscillation = Math.sin(System.currentTimeMillis() * 0.001) * 5.0;
+        move(25.0 + oscillation, 25.0 - oscillation);
+    }
+}
+
+// Modifier la méthode navigateToSharedTarget pour une meilleure navigation
+private void navigateToSharedTarget() {
+    Double[] currentPos = getPosition();
+    double deltaX = targetGlobalX - currentPos[0];
+    double deltaY = targetGlobalY - currentPos[1];
+    double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    if (distance < TARGET_REACHED_THRESHOLD) {
+        targetReached = true;
+        move(0.0, 0.0);
+        return;
+    }
+    
+    double angleToTarget = Math.atan2(deltaY, deltaX);
+    double robotTheta = odometry.getTheta();
+    double angleDiff = angleToTarget - robotTheta;
+    
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    
+    if (Math.abs(angleDiff) > 0.1) {
+        move(angleDiff > 0 ? -15.0 : 15.0, angleDiff > 0 ? 15.0 : -15.0);
+    } else {
+        move(30.0, 30.0);
+    }
+}
 	/**
 	 * Allows to send a message at all the other robots
 	 * @param message
@@ -416,56 +464,6 @@ public class AutonomyThree extends Robot {
         move(leftSpeed, rightSpeed);
     }
 
-
-    private boolean moveToSharedTarget() {
-        // Position actuelle du robot
-        double robotX = odometry.getX();
-        double robotY = odometry.getY();
-        double robotTheta = Math.toRadians(odometry.getTheta());
-
-        // Vecteur vers la cible en coordonnées globales
-        double deltaX = (targetGlobalX - robotX)*0.01;
-        double deltaY = (targetGlobalY - robotY)*0.01;
-
-        // Conversion en coordonnées locales pour la navigation
-        double localX = deltaX * Math.cos(-robotTheta) - deltaY * Math.sin(-robotTheta);
-        double localY = deltaX * Math.sin(-robotTheta) + deltaY * Math.cos(-robotTheta);
-
-        // Distance à la cible
-        double distanceToTarget = Math.sqrt(deltaX * localX + deltaY * localY);
-        
-        System.out.println("Moving to target - Distance: " + distanceToTarget);
-        System.out.println("Robot at: X=" + robotX + ", Y=" + robotY);
-        System.out.println("Target at: X=" + targetGlobalX + ", Y=" + targetGlobalY);
-        System.out.println("Local vector to target: X=" + localX + ", Y=" + localY);
-
-        if (distanceToTarget < TARGET_REACHED_THRESHOLD) {
-            //movingToSharedTarget = false;
-            targetReached = true;
-            System.out.println("Reached shared target!");
-            move(0.0, 0.0);
-            return false;
-        }
-
-        // Calculer l'angle dans le repère local
-        double angleToTarget = Math.atan2(localY, localX);
-        System.out.println("Angle to target: " + Math.toDegrees(angleToTarget));
-
-        // Navigation
-        if (Math.abs(angleToTarget) > Math.PI/6) { // Plus de 30 degrés
-            if (angleToTarget > 0) {
-                move(15.0, -15.0);
-            } else {
-                move(-15.0, 15.0);
-            }
-        } else {
-            double baseSpeed = 20.0;
-            double correction = (angleToTarget / (Math.PI/6)) * 10.0;
-            move(baseSpeed - correction, baseSpeed + correction);
-        }
-
-        return true;
-    }
 
 
 	public static void main(String[] args) {
