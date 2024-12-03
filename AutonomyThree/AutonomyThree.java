@@ -28,19 +28,16 @@ public class AutonomyThree extends Robot {
 	private Receiver receiver;
 	private LED[] leds;
 	private Random random;
-	// Nouveaux attributs pour la coordination
     private boolean targetReached = false;
     private double targetGlobalX = 0;
     private double targetGlobalY = 0;
     private boolean movingToSharedTarget = false;
-    // Ajuster le seuil de la cible atteinte
-    private static final double TARGET_REACHED_THRESHOLD = 0.15; // Augmenté pour plus de tolérance
-    private static final double MOVEMENT_SPEED_FACTOR = 1.5;    // Facteur pour ajuster la vitesse générale
-	
+    private static final double TARGET_REACHED_THRESHOLD = 0.15; 
+
 	public AutonomyThree() {
-		timeStep = 128;  // set the control time step
+		timeStep = 128;  
 		random = new Random();
-	
+
 		// Sensors initialization 
 		// IR distance sensors
 		distanceSensor = new DistanceSensor[8];
@@ -235,7 +232,8 @@ public class AutonomyThree extends Robot {
 		odometry.track_start_pos(encoder_unit * leftMotorSensor.getValue(), encoder_unit * rightMotorSensor.getValue());
 		odometry.setX(0);
 		odometry.setY(0);
-		odometry.setTheta(Math.PI/2);		
+		odometry.setTheta(Math.PI/2);	
+	
 	}
 	
 	/**
@@ -257,10 +255,8 @@ public class AutonomyThree extends Robot {
 	protected Double[] getPosition() {
 		return new Double[] {odometry.getX(),odometry.getY()};
 	}
-//added code ********************
 	private boolean handleTargetDetection(List<CameraRecognitionObject> detectedObjects) {
         if (movingToSharedTarget) {
-			navigateToSharedTarget();
             return moveToSharedTarget();
         }
 
@@ -268,8 +264,8 @@ public class AutonomyThree extends Robot {
         if (target != null) {
             // Positions locales par rapport au robot
             double[] localPosition = target.getPosition();
-            double localX = localPosition[0]; // avant/arrière
-            double localY = localPosition[1]; // gauche/droite
+            double localX = localPosition[0]; 
+            double localY = localPosition[1];
 
             // Position et orientation actuelles du robot
             double robotX = odometry.getX();
@@ -310,40 +306,11 @@ public class AutonomyThree extends Robot {
         return false;
     }
 
- 	private void navigateToSharedTarget() {
-        // On utilise les coordonnées reçues (targetGlobalX, targetGlobalY)
-        double distance = Math.sqrt(targetGlobalX * targetGlobalX + targetGlobalY * targetGlobalY);
-        double angle = Math.atan2(targetGlobalY, targetGlobalX);
 
-        System.out.println("Navigating to shared target:");
-        System.out.println("Distance: " + distance);
-        System.out.println("Angle: " + Math.toDegrees(angle));
-
-        // Si on est arrivé à la cible
-        if (distance < TARGET_REACHED_THRESHOLD) {
-            targetReached = true;
-            movingToSharedTarget = false;
-            move(0.0, 0.0);
-            return;
-        }
-
-        // Navigation
-        if (Math.abs(angle) > 0.1) {
-            move(-5.0, 25.0);  // Tourner
-        } else {
-            move(25.0, 25.0);  // Avancer
-        }
-	}
     public void run() {
         initLocalisation(); 
-        // Initialiser l'odométrie et vérifier l'initialisation
-        double leftInitial = leftMotorSensor.getValue();
-        double rightInitial = rightMotorSensor.getValue();
-        
-        odometry.track_start_pos(leftInitial, rightInitial);
-
+     
         while (step(timeStep) != -1) {
-            // Mettre à jour et vérifier l'odométrie
             double leftCurrent = leftMotorSensor.getValue();
             double rightCurrent = rightMotorSensor.getValue();
             
@@ -357,7 +324,6 @@ public class AutonomyThree extends Robot {
                 System.out.println("Received message: " + receivedMessage);
 				movingToSharedTarget = true;  
             }
-
             if (handleTargetDetection(detectedObjects)) continue;
 
             if (handleObstacleAvoidance(psValues)) continue;
@@ -458,7 +424,7 @@ public class AutonomyThree extends Robot {
         System.out.println("Angle to target: " + Math.toDegrees(angleToTarget));
 
         // Navigation
-        if (Math.abs(angleToTarget) > Math.PI/6) { // Plus de 30 degrés
+        if (Math.abs(angleToTarget) > Math.PI/6) {
             if (angleToTarget > 0) {
                 move(15.0, -15.0);
             } else {
